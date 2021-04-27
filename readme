@@ -1,97 +1,18 @@
-# -*- coding: utf-8 -*-
+This code is designed to check incoming data from Eltek equipment, in the form of .csv files. It is designed to check the incoming data every hour and email you if there is any missing data.
 
-# Import packages
-import os #os
-import fnmatch #fn match
-import pandas as pd #pandas
-import numpy as np #numpy
-import sched #scheduler
-import time # time
-import smtplib #for email
-import ssl #for email
-from datetime import datetime #datetime
-from termcolor import colored #for colouring text
-from email.mime.text import MIMEText # creates string for email
-from shutil import copyfile # for copying files
-from time import strftime 
-import sys
+This code is designed to sit on a AWS EC2 and constantly check the data. The code will output to the console, telling you what it is doing and if there is any missing data. There is also a countdown timer, showing the minutes to the next 'run'.
 
-# Directories and files
-directory = "C:/EltekGateway/" # dir where files are
-individual_files = "file_1.csv", "file_2.csv", "etc.csv", "etc.csv" # individual eltek files you want to check
+The code will copy the original files from the Eltek GPRS folder and put them into a 'checking' sub folder. This is to avoid any access issues.
 
-# Create directory tuples
-files = None
+See the eltek_datachecker.py for dependancies. This works for sending emails from gmail - i have not tested other email providers.
 
-for full_name in individual_files:
-    checking_dir = directory + "checking/" + full_name
-    original_dir = directory + full_name
-    if files is None:
-        files = (checking_dir,)
-    else:
-        files = files + (checking_dir,)
-del full_name, original_dir
+You will need to edit:
 
+1. the directory where the csv files are
+2. the csv files you want to check
+3. email recipient
+4. email sender (gmail tested) and password
+5. email message
 
-print("Packages imported")
-print("\n")
+If the code fails due to an IOerror, it will retry 10 times, before quiting and reporting an error.
 
-
-while True:
-    for attempt in range(10):
-        try:
-            print("===========================================================================================================")
-            print("Eltek Data Checker code initiated - ", strftime("%Y-%m-%d %H:%M:%S"))
-            print("===========================================================================================================")
-            # sys.stdout.write(strftime("%Y-%m-%d %H:%M:%S")+' - ') # print time
-            for full_name in individual_files:
-                checking_dir = directory + "checking/" + full_name
-                original_dir = directory + full_name
-                copyfile(original_dir, checking_dir)
-            now = datetime.now()
-            print('Checking:' , len(files), 'datafiles.', 'Time now =', now)
-            for full_name in files:
-                df_tmp= pd.read_csv(full_name, skiprows = 5) # read csv to df_tmp
-                df_tmp.rename({'TX Channel': 'date'}, axis=1, inplace=True) # rename cols
-                df_tmp['date'] = pd.to_datetime(df_tmp['date'], errors='raise', dayfirst=True) # create datetime col
-                df_tmp = df_tmp.replace('No Data', np.nan) # Eltek 'No Data' to nan
-                df_check = df_tmp[-12:]
-                df_check = df_check.isnull().values.any()
-                # df_check = df_check.isna() # Check last observation to see if there is a nan
-                df_check_time = df_tmp.date.iloc[-1] # Store datetime for last obs
-                now = datetime.now()
-                date_string = df_check_time.strftime("%Y/%m/%d, %H:%M:%S")
-                # print(df_check) #checking loop
-                if df_check.any() == 0: # Check 
-                    print(date_string, full_name + colored(' - There is NO missing data','green'))
-                    # print()
-                else:
-                    print(date_string, full_name + colored(' - There IS missing data', 'red'))
-                    SUBJECT = 'Missing data' # subject
-                    msg = 'There is missing data in file = ' + full_name + ' datetime = ' + date_string # message
-                    TO = 'firstname.surname@ucl.ac.uk' # email to
-                    FROM = 'email@gmail.com' # email from
-                    PASSW = 'password' #email password
-                    port = 465 #port - 465 standard
-                    context = ssl.create_default_context()
-                    msg = MIMEText(msg)
-                    msg['Subject'] = SUBJECT
-                    msg['To'] = TO
-                    msg['From'] = FROM
-                    with smtplib.SMTP_SSL("smtp.gmail.com", port, context=context) as server:
-                        server.login(FROM, PASSW)
-                        server.sendmail(FROM, TO, msg.as_string())
-            print("===========================================================================================================")
-            print("Eltek datachcker completed - ", datetime.now().strftime('%d-%m-%Y %H:%M:%S'))
-            print("===========================================================================================================")
-            print("\n")
-            for i in range(60,0,-1): # timer 60 seconds x 60 times = 1 hour
-                sys.stdout.write(str(i)+' ')
-                sys.stdout.flush()
-                time.sleep(60)
-            break
-        except IOError as e:
-            print("Error", e, ' retrying')
-    else:
-        print('Too many errors - 10no!')
-        break
